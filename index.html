@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>BioDigitalSim | TRON_ARESE_V4</title>
+    <style>
+        :root { --cyan: #00f2ff; --magenta: #ff00ff; --bg: #020205; }
+        body { margin:0; background: var(--bg); overflow:hidden; font-family: 'Courier New', monospace; color: var(--cyan); }
+        canvas { display:block; filter: contrast(1.1) brightness(1.1); }
+        .hud {
+            position: fixed; top: 30px; left: 30px;
+            letter-spacing: 2px; border-left: 2px solid var(--cyan);
+            padding-left: 20px; background: rgba(0,0,0,0.5); pointer-events: none;
+            text-transform: uppercase; font-size: 11px;
+        }
+    </style>
+</head>
+<body>
+
+<canvas id="canvas"></canvas>
+
+<div class="hud">
+    <div style="color: var(--magenta)">Grid_Status: ACTIVE</div>
+    <div id="metrics">SPACE: REPLAY // ESC: RESET // WHEEL: ZOOM</div>
+</div>
+
+<script>
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+let audioCtx, analyser, dataArray, source, audioBuffer;
+let history = [];
+const maxHistory = 100;
+
+let angleX = -0.3; let angleY = 0.4; let zoom = 1.0;
+let isPlaying = false;
+
+function resize() {
+    canvas.width = window.innerWidth * window.devicePixelRatio;
+    canvas.height = window.innerHeight * window.devicePixelRatio;
+    ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+}
+window.addEventListener("resize", resize);
+resize();
+
+// --- Input Controls ---
+window.addEventListener("mousemove", (e) => {
+    angleY = (e.clientX / window.innerWidth - 0.5) * 2.5;
+    angleX = (e.clientY / window.innerHeight - 0.5) * 1.5;
+});
+window.addEventListener("wheel", (e) => {
+    zoom += e.deltaY * -0.001;
+    zoom = Math.max(0.1, Math.min(zoom, 5.0));
+});
+
+// REPLAY & RESET LOGIC
+window.addEventListener("keydown", (e) => {
+    if (e.code === "Space") {
+        if (source) source.stop();
+        playBuffer(); // Trigger Replay
+    }
+    if (e.key === "Escape") { angleX = -0.3; angleY = 0.4; zoom = 1.0; }
+});
+
+function project(x, y, z) {
+    let cosY = Math.cos(angleY), sinY = Math.sin(angleY);
+    let x1 = x * cosY - z * sinY;
+    let z1 = x * sinY + z * cosY;
+    let cosX = Math.cos(angleX), sinX = Math.sin(angleX);
+    let y1 = y * cosX - z1 * sinX;
+    let z2 = y * sinX + z1 * cosX;
+    const scale = (window.innerHeight / 600) * zoom;
+    const perspective = 1200 / (1200 + z2); 
+    return { x: (x1 * perspective * scale) + window.innerWidth / 2, y: (y1 * perspective * scale) + window.innerHeight / 2 };
+}
+
+async function loadAudio() {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 512;
+    analyser.smoothingTimeConstant = 0.75;
+    
+    const response = await fetch('Assets/test.mp3'); 
+    const ab = await response.arrayBuffer();
+    audioBuffer = await audioCtx.decodeAudioData(ab);
+    playBuffer();
+    loop();
+}
+
+function playBuffer() {
+    source = audioCtx.createBufferSource();
+    source.buffer = audioBuffer;
+    source.connect(analyser);
+    analyser.connect(audioCtx.destination);
+    source.start(0);
+    isPlaying = true;
+}
+
+function drawGrid() {
+    ctx.strokeStyle = "rgba(0, 242, 255, 0.15)";
+    ctx.lineWidth = 1;
+    const s = 300; const h = 200; const d = 400;
+    const pts = [[-s,-h,-d], [s,-h,-d], [s,h,-d], [-s,h,-d], [-s,-h,d], [s,-h,d], [s,h,d], [-s,h,d]].map(p => project(p[0], p[1], p[2]));
+    for(let i=0; i<4; i++) {
+        ctx.beginPath();
+        ctx.moveTo(pts[i].x, pts[i].y); ctx.lineTo(pts[(i+1)%4].x, pts[(i+1)%4].y);
+        ctx.moveTo(pts[i+4].x, pts[i+4].y); ctx.lineTo(pts[(i+1)%4+4].x, pts[(i+1)%4+4].y);
+        ctx.moveTo(pts[i].x, pts[i].y); ctx.lineTo(pts[i+4].x, pts[i+4].y);
+        ctx.stroke();
+    }
+}
+
+function loop() {
+    ctx.fillStyle = "#020205";
+    ctx.fillRect(0, 0, window.innerWidth, window.innerHeight);
+
+    const fullData = new Uint8Array(analyser.frequencyBinCount);
+    analyser.getByteFrequencyData(fullData);
+    
+    // Zooming into Bird Frequencies
+    const croppedData = fullData.slice(8, 140);
+    history.unshift(croppedData);
+    if (history.length > maxHistory) history.pop();
+
+    drawGrid();
+
+    const cubeW = 600; const cubeH = 400; const cubeD = 800;
+
+    history.forEach((data, zIdx) => {
+        const zPos = (zIdx / maxHistory) * cubeD - (cubeD / 2);
+        const opacity = Math.pow(1 - (zIdx / maxHistory), 1.2);
+        
+        ctx.beginPath();
+        // COLOR MAPPING: Linear interpolation between Cyan and Magenta
+        const hue = 180 + (zIdx * 0.5); // Slight color shift over time
+
+        for (let i = 0; i < data.length; i++) {
+            const xPos = (i / data.length) * cubeW - (cubeW / 2);
+            let val = data[i] / 255;
+            let boostedY = Math.pow(val, 0.6) * cubeH; 
+            const yPos = (cubeH / 2) - boostedY;
+
+            // TRON Glow effect on high peaks
+            if (val > 0.8) {
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = "#ff00ff";
+            } else {
+                ctx.shadowBlur = 0;
+            }
+
+            const mix = i / data.length;
+            ctx.strokeStyle = `rgba(${0 + (mix * 255)}, ${242 * (1 - mix)}, 255, ${opacity * 0.8})`;
+
+            const pt = project(xPos, yPos, zPos);
+            if (i === 0) ctx.moveTo(pt.x, pt.y);
+            else ctx.lineTo(pt.x, pt.y);
+        }
+        ctx.stroke();
+    });
+
+    requestAnimationFrame(loop);
+}
+
+window.addEventListener('click', () => { if(!isPlaying) loadAudio(); });
+</script>
+</body>
+</html>
