@@ -79,7 +79,7 @@ async function loadAudio() {
     analyser.fftSize = 512;
     analyser.smoothingTimeConstant = 0.75;
     
-    const response = await fetch('/test.mp3'); 
+    const response = await fetch('test1.mp3'); 
     const ab = await response.arrayBuffer();
     audioBuffer = await audioCtx.decodeAudioData(ab);
     playBuffer();
