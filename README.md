@@ -3,6 +3,11 @@
 
 This project is a high-performance **3D Audio Spectrogram** designed to visualize the complex architecture of birdsong. Unlike traditional 2D scrolling graphs, this engine projects sound into a **Temporal-Cubic Manifold**, creating a physical "sculpture" of audio history that exists within a digital grid.
 
+## 🚀 Live Demo
+👉 [https://arcesoftware.github.io/TronArese/]
+
+## 📸 Preview
+![Demo](demo.gif)
 ---
 
 ## 💎 The Aesthetic Philosophy
