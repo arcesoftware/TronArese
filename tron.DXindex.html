@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BioDigitalSim | Semantic Grid V4</title>
+    <style>
+        :root { 
+            --cyan: #00f2ff; 
+            --magenta: #ff00ff; 
+            --bg: #020205; 
+            --glass: rgba(0, 242, 255, 0.05);
+        }
+
+        body { 
+            margin:0; 
+            background: var(--bg); 
+            overflow: hidden; 
+            font-family: 'Segoe UI', 'Courier New', monospace; 
+            color: var(--cyan); 
+        }
+
+        /* Semantic Layout Components */
+        header {
+            position: fixed;
+            top: 0; width: 100%;
+            padding: 20px;
+            z-index: 10;
+            background: linear-gradient(to bottom, rgba(2,2,5,0.8), transparent);
+            display: flex;
+            justify-content: space-between;
+        }
+
+        main {
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* The Semantic HUD */
+        .hud-box {
+            border-left: 3px solid var(--magenta);
+            padding: 10px 20px;
+            background: var(--glass);
+            backdrop-filter: blur(5px);
+            text-transform: uppercase;
+            font-size: 12px;
+            letter-spacing: 1px;
+        }
+
+        footer {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            font-size: 10px;
+            opacity: 0.6;
+        }
+
+        canvas { 
+            display:block; 
+            filter: contrast(1.2) brightness(1.1) drop-shadow(0 0 10px var(--cyan));
+        }
+
+        /* Screen Reader Only (Accessibility) */
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0,0,0,0);
+            border: 0;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <section class="hud-box" aria-label="System Status">
+            <h1 style="font-size: 14px; margin: 0;">BioDigital_OS</h1>
+            <div style="color: var(--magenta)">Grid_Status: <span id="status">STANDBY</span></div>
+        </section>
+
+        <nav class="hud-box" aria-label="Control Legend">
+            <div>SPACE: REPLAY</div>
+            <div>ESC: RESET</div>
+        </nav>
+    </header>
+
+    <main>
+        <h2 class="sr-only">3D Frequency Spectral Analyzer</h2>
+        <canvas id="canvas"></canvas>
+    </main>
+
+    <article class="sr-only">
+        <h3>Simulation Parameters</h3>
+        <p>This simulation visualizes bird frequency data using a 3D spectral waterfall. 
+           It utilizes standard physical constants to map audio amplitude to geometric displacement.</p>
+    </article>
+
+    <footer>
+        &copy; 2026 TRON_ARESE_V4 // TERMINAL_ID: 8892-X
+    </footer>
+
+<script>
+// --- [Core Logic from your Original Script] ---
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+const statusText = document.getElementById("status");
+let audioCtx, analyser, dataArray, source, audioBuffer;
+let history = [];
+const maxHistory = 80;
+
+let angleX = -0.3; let angleY = 0.4; let zoom = 1.0;
+let isPlaying = false;
+
+function resize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+}
+window.addEventListener("resize", resize);
+resize();
+
+// Input Controls
+window.addEventListener("mousemove", (e) => {
+    angleY = (e.clientX / window.innerWidth - 0.5) * 2;
+    angleX = (e.clientY / window.innerHeight - 0.5) * 1;
+});
+
+window.addEventListener("keydown", (e) => {
+    if (e.code === "Space" && audioBuffer) {
+        if (source) source.stop();
+        playBuffer();
+    }
+    if (e.key === "Escape") { angleX = -0.3; angleY = 0.4; zoom = 1.0; }
+});
+
+async function initAudio() {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 256;
+    
+    statusText.innerText = "LOADING_ASSETS...";
+    
+    try {
+        // Note: You will need 'test1.mp3' in the same folder
+        const response = await fetch('test1.mp3');
+        const ab = await response.arrayBuffer();
+        audioBuffer = await audioCtx.decodeAudioData(ab);
+        playBuffer();
+        statusText.innerText = "ACTIVE";
+        loop();
+    } catch(err) {
+        statusText.innerText = "ERROR: NO_SOURCE";
+        console.error("Audio failed to load", err);
+    }
+}
+
+function playBuffer() {
+    source = audioCtx.createBufferSource();
+    source.buffer = audioBuffer;
+    source.connect(analyser);
+    analyser.connect(audioCtx.destination);
+    source.start(0);
+    isPlaying = true;
+}
+
+function project(x, y, z) {
+    let cosY = Math.cos(angleY), sinY = Math.sin(angleY);
+    let x1 = x * cosY - z * sinY;
+    let z1 = x * sinY + z * cosY;
+    let cosX = Math.cos(angleX), sinX = Math.sin(angleX);
+    let y1 = y * cosX - z1 * sinX;
+    let z2 = y * sinX + z1 * cosX;
+    const p = 1000 / (1000 + z2);
+    return { x: (x1 * p) + window.innerWidth / 2, y: (y1 * p) + window.innerHeight / 2 };
+}
+
+function loop() {
+    ctx.fillStyle = "#020205";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    const data = new Uint8Array(analyser.frequencyBinCount);
+    analyser.getByteFrequencyData(data);
+    history.unshift(new Uint8Array(data));
+    if (history.length > maxHistory) history.pop();
+
+    history.forEach((frame, zIdx) => {
+        ctx.beginPath();
+        const opacity = 1 - (zIdx / maxHistory);
+        const zPos = (zIdx * 10) - 400;
+
+        for (let i = 0; i < frame.length; i++) {
+            const xPos = (i * 12) - (frame.length * 6);
+            const val = frame[i] / 255;
+            const yPos = 100 - (val * 300);
+            
+            const pt = project(xPos, yPos, zPos);
+            
+            ctx.strokeStyle = `rgba(0, 242, 255, ${opacity * 0.5})`;
+            if (i === 0) ctx.moveTo(pt.x, pt.y);
+            else ctx.lineTo(pt.x, pt.y);
+        }
+        ctx.stroke();
+    });
+
+    requestAnimationFrame(loop);
+}
+
+// Start on first click
+window.addEventListener('click', () => { if(!isPlaying) initAudio(); }, {once: true});
+</script>
+</body>
+</html>
