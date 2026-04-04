@@ -147,7 +147,7 @@ async function initAudio() {
     
     try {
         // Note: You will need 'test1.mp3' in the same folder
-        const response = await fetch('test1.mp3');
+        const response = await fetch('test3.mp3');
         const ab = await response.arrayBuffer();
         audioBuffer = await audioCtx.decodeAudioData(ab);
         playBuffer();
